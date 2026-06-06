@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>QRIS Parser</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+
+<header>
+  <h1>QRIS Parser</h1>
+  <span class="tag">EMVCo MPM · CRC16-CCITT · Rust + Axum</span>
+</header>
+
+<div class="layout">
+
+  <!-- LEFT: Input + parsed view -->
+  <section class="panel">
+    <h2>1. Input QRIS</h2>
+
+    <div class="tabs">
+      <div class="tab active" data-tab="text">Paste teks</div>
+      <div class="tab" data-tab="image">Upload gambar</div>
+    </div>
+
+    <div id="tab-text">
+      <textarea id="input" placeholder="Tempel QRIS string di sini…"></textarea>
+    </div>
+
+    <div id="tab-image" class="hidden">
+      <label class="dropzone" id="dropzone">
+        <strong>Klik untuk pilih</strong> atau drag &amp; drop gambar QR<br/>
+        <span style="font-size:11px;">PNG / JPG · bisa juga paste (Ctrl+V)</span>
+        <input type="file" id="file-input" accept="image/*" />
+      </label>
+      <div class="dropzone-row">
+        <button class="secondary" id="btn-camera">Ambil dari kamera</button>
+        <button class="secondary" id="btn-clear-image">Reset gambar</button>
+      </div>
+      <img id="preview-img" class="preview-img hidden" />
+      <div id="decode-status" class="muted" style="margin-top:8px;"></div>
+    </div>
+
+    <div class="row">
+      <button id="btn-parse">Parse</button>
+      <button class="secondary" id="btn-sample">Load sample</button>
+      <button class="secondary" id="btn-clear">Clear</button>
+    </div>
+    <div id="parse-error" class="error hidden"></div>
+
+    <div id="parsed" class="hidden" style="margin-top:18px;">
+      <h2>Summary <span id="crc-badge"></span></h2>
+      <div class="summary" id="summary"></div>
+
+      <h2 style="margin-top:18px;">TLV Tree</h2>
+      <div class="tlv-tree" id="tlv-tree"></div>
+    </div>
+  </section>
+
+  <!-- RIGHT: Edit + Generate -->
+  <section class="panel">
+    <h2>2. Edit & Generate</h2>
+    <div id="editor-empty" class="muted">Parse dulu QRIS di sebelah kiri untuk mulai mengedit.</div>
+
+    <div id="editor-wrap" class="hidden">
+      <div class="editor" id="editor"></div>
+      <div class="row">
+        <label class="muted"><input type="checkbox" id="auto-dynamic" checked style="width:auto;margin-right:6px;" />Auto-flip ke dynamic saat ada amount</label>
+      </div>
+      <div class="row">
+        <button class="success" id="btn-generate">Generate &amp; Verify</button>
+        <button class="secondary" id="btn-reset">Reset edits</button>
+      </div>
+      <div id="gen-error" class="error hidden"></div>
+    </div>
+
+    <div id="result" class="hidden" style="margin-top:18px;">
+      <h2>New QRIS <span id="gen-crc-badge"></span></h2>
+      <div class="payload-box" id="new-payload"></div>
+      <div class="row">
+        <button class="secondary" id="btn-copy">Copy payload</button>
+        <button class="secondary" id="btn-use">Use as input</button>
+      </div>
+      <h2 style="margin-top:18px;">QR Code Preview</h2>
+      <div class="qr-wrap"><canvas id="qr-canvas" width="260" height="260"></canvas></div>
+
+      <h2 style="margin-top:18px;">New Summary</h2>
+      <div class="summary" id="new-summary"></div>
+    </div>
+  </section>
+
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

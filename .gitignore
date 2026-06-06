@@ -1,1 +1,10 @@
 /target
+
+# Editor / OS
+.vscode/
+
+# Local dev artifacts (not part of the app)
+*.log
+image.png
+qris.jpeg
+install-kiro-extensions*.ps1

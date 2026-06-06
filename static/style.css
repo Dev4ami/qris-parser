@@ -127,9 +127,10 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .payload-box .crc-part { color: var(--accent-2); font-weight: 700; }
 
 .qr-wrap { display: flex; justify-content: center; padding: 12px;
-  background: #fff; border-radius: 8px; margin-top: 12px; contain: strict;
-  width: 100%; max-width: 280px; height: 280px; margin-left: auto; margin-right: auto; }
-#qr-canvas { display: block; width: 260px; height: 260px; image-rendering: pixelated; }
+  background: #fff; border-radius: 8px; margin-top: 12px;
+  width: 100%; max-width: 384px; margin-left: auto; margin-right: auto; }
+#qr-canvas { display: block; width: 100%; max-width: 360px; height: auto;
+  border-radius: 6px; }
 
 /* 9. Image input */
 .error { color: var(--danger); font-size: 12px; padding: 8px;
@@ -140,7 +141,9 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; }
 .toolbar .spacer { flex: 1; }
 
-.dropzone { border: 2px dashed var(--border); border-radius: 8px; padding: 18px;
+.dropzone { display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 4px; min-height: 96px;
+  border: 2px dashed var(--border); border-radius: 8px; padding: 18px;
   text-align: center; color: var(--muted); cursor: pointer;
   background: var(--panel-2); font-size: 12.5px; }
 .dropzone.drag { border-color: var(--accent); color: var(--text); }

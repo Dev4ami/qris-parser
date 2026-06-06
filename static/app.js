@@ -469,34 +469,110 @@ function renderPayloadColored(payload) {
   }
 }
 
-async function drawQr(payload) {
+// NMID lives in sub-tag 02 of an acquirer template (tags 26–51).
+function extractNmid(tlvs) {
+  for (const t of tlvs || []) {
+    const n = parseInt(t.tag, 10);
+    if (n >= 26 && n <= 51 && t.children) {
+      const sub = t.children.find((c) => c.tag === "02");
+      if (sub && sub.value) return sub.value;
+    }
+  }
+  return "";
+}
+
+// The official QRIS card used as a background template. Cached after first load.
+let _qrisTemplate = null;
+let _lastCardName = "qris";   // slug of the last generated merchant, for the download filename
+function loadQrisTemplate() {
+  if (_qrisTemplate) return Promise.resolve(_qrisTemplate);
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => { _qrisTemplate = img; resolve(img); };
+    img.onerror = () => reject(new Error("Gagal memuat template QRIS"));
+    img.src = "/qris-template.jpg";
+  });
+}
+
+// Shrink a font until `text` fits within maxW (keeps long names on one line).
+function fitFont(ctx, text, maxW, startPx, weight) {
+  let px = startPx;
+  ctx.font = `${weight} ${px}px Arial, sans-serif`;
+  while (px > 18 && ctx.measureText(text).width > maxW) {
+    px -= 2;
+    ctx.font = `${weight} ${px}px Arial, sans-serif`;
+  }
+}
+
+// Render the generated payload onto the real QRIS card: draw the official
+// template, then overlay the new QR, merchant name, and NMID at the exact
+// pixel coordinates measured from qris.jpeg (1142×1600). Everything else
+// (logos, red frame, slogan, "A01" terminal code) is left as-is.
+async function drawQr(payload, parsed) {
   const canvas = $("qr-canvas");
+  const W = 1142, H = 1600;
+  canvas.width = W;
+  canvas.height = H;
   const ctx = canvas.getContext("2d");
+
+  const summary = (parsed && parsed.summary) || {};
+  const merchant = (summary.merchant_name || "MERCHANT").toUpperCase();
+  const nmid = extractNmid(parsed && parsed.tlvs);
+  _lastCardName = merchant.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "qris";
+
+  // Background template (logos, frame, slogan). Plain white on failure.
+  try {
+    const tpl = await loadQrisTemplate();
+    ctx.drawImage(tpl, 0, 0, W, H);
+  } catch (e) {
+    console.error(e);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  // Merchant name (band y≈275–310 in template).
   ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(110, 260, 922, 60);
+  ctx.fillStyle = "#1a1a1a";
+  fitFont(ctx, merchant, W - 180, 48, "700");
+  ctx.fillText(merchant, W / 2, 292);
+
+  // NMID (band y≈346–376). Only overwrite when we actually parsed one.
+  if (nmid) {
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(180, 340, 782, 42);
+    ctx.fillStyle = "#1a1a1a";
+    ctx.font = "400 38px Arial, sans-serif";
+    ctx.fillText("NMID:" + nmid, W / 2, 361);
+  }
+
+  // QR code (template box x 249–891, y 508, side 642).
+  const qX = 249, qY = 508, qSize = 642;
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(qX - 8, qY - 8, qSize + 16, qSize + 16);
   try {
     await lazyScript("/qrcode.min.js");
     const qr = qrcode(0, "M");
     qr.addData(payload);
     qr.make();
     const count = qr.getModuleCount();
-    const margin = 2;
-    const totalModules = count + margin * 2;
-    const cell = Math.floor(canvas.width / totalModules);
-    const offset = Math.floor((canvas.width - cell * count) / 2);
+    const cell = qSize / count;
     ctx.fillStyle = "#000";
     for (let r = 0; r < count; r++) {
       for (let c = 0; c < count; c++) {
         if (qr.isDark(r, c)) {
-          ctx.fillRect(offset + c * cell, offset + r * cell, cell, cell);
+          ctx.fillRect(qX + c * cell, qY + r * cell, Math.ceil(cell), Math.ceil(cell));
         }
       }
     }
   } catch (e) {
     console.error("QR render failed:", e);
     ctx.fillStyle = "#000";
-    ctx.font = "12px monospace";
-    ctx.fillText("QR error: " + e.message, 10, 20);
+    ctx.font = "24px monospace";
+    ctx.fillText("QR error: " + e.message, W / 2, qY + qSize / 2);
   }
 }
 
@@ -701,7 +777,7 @@ $("btn-generate").addEventListener("click", async () => {
     renderCrcBadge($("gen-crc-badge"), data.parsed.crc_valid, data.parsed.crc_expected, data.parsed.crc_actual);
     renderSummary($("new-summary"), data.parsed.summary);
     $("result").classList.remove("hidden");
-    await drawQr(data.payload);
+    await drawQr(data.payload, data.parsed);
   } catch (e) {
     showError("gen-error", e.message);
   }
@@ -729,4 +805,34 @@ $("btn-copy").addEventListener("click", async () => {
 $("btn-use").addEventListener("click", () => {
   $("input").value = $("new-payload").textContent;
   $("btn-parse").click();
+});
+
+$("btn-download").addEventListener("click", async () => {
+  const canvas = $("qr-canvas");
+  const name = `qris-${_lastCardName}.png`;
+  const blob = await new Promise((res) => canvas.toBlob(res, "image/png"));
+  if (!blob) { alert("Gagal membuat gambar QRIS"); return; }
+
+  // On mobile the share sheet offers "Save Image"/"Simpan ke Foto" — the most
+  // reliable way to save a canvas there (long-press / <a download> are flaky).
+  const file = new File([blob], name, { type: "image/png" });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: "QRIS" });
+      return;
+    } catch (e) {
+      if (e.name === "AbortError") return;   // user dismissed the sheet
+      // any other error: fall through to a normal download
+    }
+  }
+
+  // Desktop / fallback: trigger a regular file download.
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 });

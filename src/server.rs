@@ -30,6 +30,7 @@ pub fn router() -> Router {
         .route("/app.js", get(app_js))
         .route("/qrcode.min.js", get(qrcode_js))
         .route("/jsqr.min.js", get(jsqr_js))
+        .route("/qris-template.jpg", get(qris_template))
         // Health + API.
         .route("/health", get(health))
         .route("/parse", post(parse_post).get(parse_get))
@@ -45,6 +46,7 @@ const STYLE_CSS: &str = include_str!("../static/style.css");
 const APP_JS: &str = include_str!("../static/app.js");
 const QRCODE_JS: &str = include_str!("../static/qrcode.min.js");
 const JSQR_JS: &str = include_str!("../static/jsqr.min.js");
+const QRIS_TEMPLATE: &[u8] = include_bytes!("../static/qris-template.jpg");
 
 // HTML changes often during development; cache shortly. Library bundles are
 // vendored and never change, so they get an immutable cache header.
@@ -52,6 +54,7 @@ const CACHE_SHORT: &str = "public, max-age=300";
 const CACHE_IMMUTABLE: &str = "public, max-age=31536000, immutable";
 const JS_TYPE: &str = "application/javascript; charset=utf-8";
 const CSS_TYPE: &str = "text/css; charset=utf-8";
+const JPEG_TYPE: &str = "image/jpeg";
 
 async fn index() -> impl IntoResponse {
     ([(header::CACHE_CONTROL, CACHE_SHORT)], Html(INDEX_HTML))
@@ -94,6 +97,16 @@ async fn jsqr_js() -> impl IntoResponse {
             (header::CACHE_CONTROL, CACHE_IMMUTABLE),
         ],
         JSQR_JS,
+    )
+}
+
+async fn qris_template() -> impl IntoResponse {
+    (
+        [
+            (header::CONTENT_TYPE, JPEG_TYPE),
+            (header::CACHE_CONTROL, CACHE_IMMUTABLE),
+        ],
+        QRIS_TEMPLATE,
     )
 }
 

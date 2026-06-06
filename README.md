@@ -24,8 +24,12 @@ CRC16-CCITT checksum.
     those fields cannot be edited safely.
 - **Image input**: paste, drag-and-drop, or take a photo of a QR — decoded
   client-side via [jsQR](https://github.com/cozmo/jsQR).
-- **QR preview** of the modified payload, generated client-side via
-  [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator).
+- **QRIS card preview**: the modified payload is rendered onto the official
+  QRIS card layout (logos, merchant name, NMID, frame, slogan), generated
+  client-side via [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator)
+  overlaid on an embedded template image.
+- **Download / share** the generated card as a PNG — uses the Web Share API on
+  mobile (so it offers "Save to Photos") and a normal file download on desktop.
 
 ## Running
 
@@ -33,13 +37,19 @@ Requires Rust 1.74+ (Axum 0.7 MSRV).
 
 ```sh
 cargo run --release
-# qris-parser listening on http://0.0.0.0:3000
+# qris-parser listening on http://0.0.0.0:8080
 ```
 
-Override the bind address:
+The listen address resolves in this order:
+
+1. `BIND` — full `host:port` (e.g. `BIND=127.0.0.1:9090`).
+2. `PORT` — port only, bound on `0.0.0.0` (the convention used by Coolify /
+   Nixpacks / most PaaS).
+3. default `0.0.0.0:8080`.
 
 ```sh
-BIND=127.0.0.1:8080 cargo run --release
+BIND=127.0.0.1:9090 cargo run --release
+PORT=8080 cargo run --release
 ```
 
 Tests:
@@ -47,6 +57,37 @@ Tests:
 ```sh
 cargo test --lib
 ```
+
+## Deployment
+
+All assets (HTML/CSS/JS + the QRIS template image) are embedded in the binary,
+so the runtime image only needs the executable.
+
+### Docker
+
+```sh
+docker build -t qris-parser .
+docker run -p 8080:8080 qris-parser
+# open http://localhost:8080
+```
+
+The image is multi-stage: `rust:1-bookworm` to build, `debian:bookworm-slim`
+to run (non-root user, ~exe-sized layer). It exposes `8080` and binds
+`0.0.0.0:8080` by default.
+
+### Coolify (GitHub App)
+
+1. **New Resource → Application**, source = your GitHub repo (via the Coolify
+   GitHub App), branch `main`.
+2. **Build Pack = Dockerfile** (Coolify auto-detects the `Dockerfile`).
+3. **Port** = `8080` (the container port Traefik routes to). Cloudflare / your
+   domain route to the service over `80`/`443`; Traefik terminates TLS and
+   proxies to `8080` internally — no extra port config needed in the app.
+4. **Health check path** = `/health` (returns `"ok"`).
+5. Deploy. Each push to `main` triggers a rebuild.
+
+To override the port without touching the Dockerfile, set `PORT` (or `BIND`)
+as an environment variable in Coolify.
 
 ## HTTP API
 
@@ -147,13 +188,17 @@ qris-parser/
 │       ├── tlv.rs            # decode / encode primitives
 │       ├── parse.rs          # high-level parse + summary
 │       └── modify.rs         # set/remove + recompute CRC
-└── static/                   # embedded via include_str! at build time
+└── static/                   # embedded at build time (include_str!/include_bytes!)
     ├── index.html
     ├── style.css
     ├── app.js                # frontend application
+    ├── qris-template.jpg     # official QRIS card, overlaid with the generated QR
     ├── qrcode.min.js         # vendored — qrcode-generator
     └── jsqr.min.js           # vendored — jsQR
 ```
+
+The container image is built from the `Dockerfile` (multi-stage); the binary is
+fully self-contained, so the runtime stage copies nothing but the executable.
 
 ### Parser pipeline
 
@@ -192,7 +237,8 @@ parse → strip CRC → set/remove → sort by tag → reserialise + "6304" + CR
                           edit fields ──▶  POST /modify  ──▶  new payload
                                                                   │
                                                                   ▼
-                                                       qrcode-generator → <canvas>
+                                          qrcode-generator + QRIS template
+                                          → <canvas> → download / share PNG
 ```
 
 The QR generator and image decoder bundles are lazy-loaded on first use to
@@ -200,9 +246,10 @@ keep initial page weight light.
 
 ## Development notes
 
-- **Why a single binary** — the entire app (UI + libraries + handlers)
-  compiles into one executable. Deployment is `scp` the binary, optionally
-  fronted by a reverse proxy.
+- **Why a single binary** — the entire app (UI + libraries + template image +
+  handlers) compiles into one executable. Deployment is `scp` the binary or run
+  the Docker image, optionally fronted by a reverse proxy (e.g. Traefik on
+  Coolify).
 - **Why no JS framework** — the UI is small enough that a framework would be
   more code than the app itself. Vanilla DOM keeps refresh cost low and the
   source readable end-to-end.
